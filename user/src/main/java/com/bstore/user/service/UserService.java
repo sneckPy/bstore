@@ -1,9 +1,11 @@
 package com.bstore.user.service;
 
+import com.bstore.commons.exception.DataRetrievalException;
 import com.bstore.commons.exception.EmailAlreadyUsedException;
-import com.bstore.user.model.entity.User;
 import com.bstore.commons.model.request.UserRequest;
+import com.bstore.commons.model.response.UserDetailsResponse;
 import com.bstore.commons.model.response.UserResponse;
+import com.bstore.user.model.entity.User;
 import com.bstore.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.convert.ConversionService;
@@ -50,7 +52,17 @@ public class UserService {
         return userRepository.findAll(example).stream().map(data -> conversionService.convert(data, UserResponse.class)).toList();
     }
 
+    public UserDetailsResponse findDetailsByEmail(String email) {
+        User userEntity = userRepository.findByEmail(email).orElseThrow(() -> new DataRetrievalException("User not found"));
+        return conversionService.convert(userEntity, UserDetailsResponse.class);
+    }
+
     public List<UserResponse> get() {
         return userRepository.findAll().stream().map(user -> conversionService.convert(user, UserResponse.class)).toList();
+    }
+
+    public UserDetailsResponse findDetailsById(Long id) {
+        User userEntity = userRepository.findById(id).orElseThrow(() -> new DataRetrievalException("User not found"));
+        return conversionService.convert(userEntity, UserDetailsResponse.class);
     }
 }

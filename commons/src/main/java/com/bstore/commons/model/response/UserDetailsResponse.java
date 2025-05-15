@@ -9,11 +9,12 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UserResponse {
+public class UserDetailsResponse {
     private Long id;
     private String firstName;
     private String lastName;
     private String email;
     private String shippingAddress;
     private LocalDate birthDate;
+    private String passwordHash;
 }

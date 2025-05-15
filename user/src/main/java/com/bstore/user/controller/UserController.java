@@ -1,6 +1,7 @@
 package com.bstore.user.controller;
 
 import com.bstore.commons.model.request.UserRequest;
+import com.bstore.commons.model.response.UserDetailsResponse;
 import com.bstore.commons.model.response.UserResponse;
 import com.bstore.user.service.UserService;
 import jakarta.validation.Valid;
@@ -25,6 +26,12 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.OK).body(userList);
     }
 
+    @GetMapping("/details")
+    public ResponseEntity<UserDetailsResponse> findDetailsByEmail(@RequestParam("email") String email) {
+        UserDetailsResponse response = userService.findDetailsByEmail(email);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping
     public ResponseEntity<UserResponse> registerUser(@Valid @RequestBody UserRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.register(request));
@@ -33,6 +40,12 @@ public class UserController {
     @PutMapping
     public ResponseEntity<UserResponse> updateUser(@Valid @RequestBody UserRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.update(request));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDetailsResponse> getById(@PathVariable Long id) {
+        UserDetailsResponse user = userService.findDetailsById(id);
+        return ResponseEntity.ok(user);
     }
 
 }
