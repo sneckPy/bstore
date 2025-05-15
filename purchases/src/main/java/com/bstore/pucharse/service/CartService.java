@@ -124,19 +124,15 @@ public class CartService {
     }
 
     private BigDecimal getCartTotalPrice(List<ProductResponse> products, Map<Long, Integer> qtyByProductId) {
-        BigDecimal total = BigDecimal.ZERO;
-        if (products != null && qtyByProductId != null) {
-            total = products.stream()
-                    .map(p -> {
-                        Integer qty = qtyByProductId.getOrDefault(p.getId(), 0);
-                        if (p.getPrice() != null && qty != null && qty > 0) {
-                            return p.getPrice().multiply(BigDecimal.valueOf(qty));
-                        }
-                        return BigDecimal.ZERO;
-                    })
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (products == null || qtyByProductId == null) {
+            return BigDecimal.ZERO;
         }
-        return total;
+        return products.stream()
+                .filter(p -> p.getPrice() != null && qtyByProductId.getOrDefault(p.getId(), 0) > 0)
+                .map(p -> p.getPrice().multiply(
+                        BigDecimal.valueOf(qtyByProductId.get(p.getId()))
+                ))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private List<ProductResponse> getProducts(Cart cart) {

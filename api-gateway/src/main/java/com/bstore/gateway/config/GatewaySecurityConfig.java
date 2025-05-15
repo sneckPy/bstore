@@ -39,9 +39,11 @@ public class GatewaySecurityConfig {
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
 
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/auth/register/**").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/auth/login/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/products/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/users/details").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/users/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/purchases/carts").permitAll()
                         .pathMatchers(HttpMethod.PUT, "/purchases/carts/**").permitAll()
                         .pathMatchers(HttpMethod.DELETE, "/purchases/carts/**").permitAll()
