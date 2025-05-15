@@ -34,6 +34,10 @@ public class UserService {
         return conversionService.convert(user, UserResponse.class);
     }
 
+    public void delete(Long userId) {
+        userRepository.deleteById(userId);
+    }
+
     public List<UserResponse> search(UserRequest filter) {
         User user = new User();
         user.setId(filter.getId());

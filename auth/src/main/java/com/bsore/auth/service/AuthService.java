@@ -20,8 +20,7 @@ public class AuthService {
     private final RefreshTokenService refreshService;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthResponse authenticate(LoginRequest request) {
-        UserDetailsResponse user = usersClient.getByEmail(request.getEmail());
+    public AuthResponse authenticate(LoginRequest request, UserDetailsResponse user) {
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new RuntimeException("Invalid credentials");
         }
@@ -32,16 +31,11 @@ public class AuthService {
 
 
     @Transactional
-    public AuthResponse refreshTokens(String oldRefreshJti) {
-        RefreshToken oldToken = refreshService.findByJti(oldRefreshJti);
+    public AuthResponse refreshTokens(RefreshToken oldToken, UserDetailsResponse userDetailsResponse) {
         refreshService.verifyExpiration(oldToken);
         RefreshToken newToken = refreshService.rotateToken(oldToken);
-        String newAccessToken = jwtUtil.generateAccessToken(usersClient.getByEmailById(oldToken.getUserId()));
+        String newAccessToken = jwtUtil.generateAccessToken(userDetailsResponse);
         return new AuthResponse(newAccessToken, newToken.getJti());
     }
 
-    public String generateAccessTokenForUserId(Long userId) {
-        UserDetailsResponse user = usersClient.getByEmailById(userId);
-        return jwtUtil.generateAccessToken(user);
-    }
 }

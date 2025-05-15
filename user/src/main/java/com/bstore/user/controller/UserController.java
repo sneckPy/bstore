@@ -39,7 +39,14 @@ public class UserController {
 
     @PutMapping
     public ResponseEntity<UserResponse> updateUser(@Valid @RequestBody UserRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(userService.update(request));
+        return ResponseEntity.status(HttpStatus.OK).body(userService.update(request));
+    }
+
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<UserResponse> deleteUser(@PathVariable Long id) {
+        userService.delete(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
     @GetMapping("/{id}")

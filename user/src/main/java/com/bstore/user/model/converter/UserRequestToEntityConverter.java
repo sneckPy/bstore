@@ -19,6 +19,7 @@ public class UserRequestToEntityConverter
     @Override
     public User convert(UserRequest source) {
         return User.builder()
+                .id(source.getId())
                 .firstName(source.getFirstName())
                 .lastName(source.getLastName())
                 .email(source.getEmail())
