@@ -6,7 +6,6 @@ import com.bstore.commons.model.response.UserDetailsResponse;
 import com.bstore.commons.model.response.UserResponse;
 import jakarta.validation.Valid;
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @FeignClient(name = "users-client", url = "${gateway.url}/users")

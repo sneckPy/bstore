@@ -8,13 +8,14 @@ import com.bstore.pucharse.factory.CartItemFactory;
 import com.bstore.pucharse.model.entity.Cart;
 import com.bstore.pucharse.model.entity.CartItem;
 import com.bstore.pucharse.repository.CartRepository;
+import com.bstore.pucharse.client.ProductClient;
+
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
+
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -25,8 +26,15 @@ import java.util.stream.Collectors;
 public class CartService {
     private final CartRepository cartRepository;
     private final CartItemFactory itemFactory;
-    private final WebClient productWebClient;
+    private final ProductClient productClient;
+
+
     private static final Logger log = LoggerFactory.getLogger(CartService.class);
+
+    @Transactional
+    public Cart getOrCreateUserCart(Long userId) {
+        return cartRepository.findByUserId(userId).orElseGet(() -> Cart.builder().userId(userId).items(new ArrayList<>()).build());
+    }
 
     public Optional<CartResponse> findByUserId(Long userId) {
         Optional<Cart> cartOpt = cartRepository.findByUserId(userId);
@@ -34,6 +42,7 @@ public class CartService {
 
         Cart cart = cartOpt.get();
         List<ProductResponse> products = getProducts(cart);
+
         Map<Long, Integer> qtyByProductId = getProductQty(cart);
 
         return Optional.of(CartResponse.builder()
@@ -45,12 +54,55 @@ public class CartService {
 
     @Transactional
     public CartResponse updateCart(Long userId, CartRequest request) {
-        Cart cart = cartRepository.findByUserId(userId).orElseGet(() -> Cart.builder().userId(userId).build());
+        Cart cart = getOrCreateUserCart(userId);
 
-        if (cart.getItems() != null) cart.getItems().clear();
-        else cart.setItems(new ArrayList<>());
-        List<CartItem> newItems = itemFactory.buildItems(request, cart);
-        cart.getItems().addAll(newItems);
+        Map<Long, Integer> itemsToProcess = request != null ? request.getItems() : Collections.emptyMap();
+
+        List<CartItem> existingItems = cart.getItems();
+        if (existingItems == null) {
+            existingItems = new ArrayList<>();
+            cart.setItems(existingItems);
+        }
+
+        Map<Long, Integer> processedRequestItems = new HashMap<>(itemsToProcess);
+
+        Iterator<CartItem> iterator = existingItems.iterator();
+        while (iterator.hasNext()) {
+            CartItem item = iterator.next();
+            Long productId = item.getProductId();
+
+            if (processedRequestItems.containsKey(productId)) {
+                Integer quantityChange = processedRequestItems.get(productId);
+
+                if (quantityChange != null && quantityChange != 0) {
+                    item.setQuantity(item.getQuantity() + quantityChange);
+
+                    processedRequestItems.remove(productId);
+
+                    if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                        iterator.remove();
+                    }
+                } else if (quantityChange != null) {
+                    iterator.remove();
+                    processedRequestItems.remove(productId);
+                } else {
+                    log.warn("Null quantity provided for item {} in CartRequest for user {}. Ignoring.", productId, userId);
+                }
+            }
+        }
+
+        List<CartItem> newItemsToAdd = processedRequestItems.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() > 0)
+                .map(entry -> {
+                    Long productId = entry.getKey();
+                    Integer quantity = entry.getValue();
+                    return itemFactory.buildItem(productId, quantity, cart);
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        existingItems.addAll(newItemsToAdd);
+
         Cart saved = cartRepository.save(cart);
 
         List<ProductResponse> products = getProducts(saved);
@@ -73,11 +125,14 @@ public class CartService {
 
     private BigDecimal getCartTotalPrice(List<ProductResponse> products, Map<Long, Integer> qtyByProductId) {
         BigDecimal total = BigDecimal.ZERO;
-        if (products != null) {
+        if (products != null && qtyByProductId != null) {
             total = products.stream()
                     .map(p -> {
-                        Integer qty = qtyByProductId.get(p.getId());
-                        return p.getPrice().multiply(BigDecimal.valueOf(qty == null ? 0 : qty));
+                        Integer qty = qtyByProductId.getOrDefault(p.getId(), 0);
+                        if (p.getPrice() != null && qty != null && qty > 0) {
+                            return p.getPrice().multiply(BigDecimal.valueOf(qty));
+                        }
+                        return BigDecimal.ZERO;
                     })
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
@@ -85,49 +140,64 @@ public class CartService {
     }
 
     private List<ProductResponse> getProducts(Cart cart) {
-        if (cart.getItems().isEmpty()) return Collections.emptyList();
+        if (cart == null || cart.getItems() == null || cart.getItems().isEmpty()) {
+            return Collections.emptyList();
+        }
 
-        String idsParam = cart.getItems().stream()
+        Set<Long> productIds = cart.getItems().stream()
                 .map(CartItem::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        if (productIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        String idsParam = productIds.stream()
                 .map(String::valueOf)
                 .collect(Collectors.joining(","));
 
-        String relative = "/products?ids=" + idsParam;
-        log.info("Llamando a Product Service en URI relativa -> {}", relative);
+        log.info("Calling Product Service via Feign client with IDs: {}", idsParam);
 
-        return productWebClient.get()
-                .uri("/products/?ids=" + idsParam)
-                .exchangeToFlux(response -> {
-                    log.info("Products call status: {}", response.statusCode());
-                    if (response.statusCode().is2xxSuccessful()) {
-                        return response.bodyToFlux(ProductResponse.class);
-                    } else {
-                        return response.bodyToMono(String.class)
-                                .flatMapMany(body -> {
-                                    log.warn("Products call body: {}", body);
-                                    return Flux.empty();
-                                });
-                    }
-                })
-                .collectList()
-                .block();
-
+        try {
+            return productClient.getProductsByIds(idsParam);
+        } catch (Exception e) {
+            log.error("Error fetching products via Feign client: {}", e.getMessage(), e);
+            return Collections.emptyList(); // Retorna lista vacía en caso de error
+        }
     }
 
     private Map<Long, Integer> getProductQty(Cart saved) {
-        return saved.getItems().stream().collect(Collectors.toMap(CartItem::getProductId, CartItem::getQuantity));
+        if (saved == null || saved.getItems() == null) return Collections.emptyMap();
+        return saved.getItems().stream()
+                .filter(item -> item != null && item.getProductId() != null && item.getQuantity() != null && item.getQuantity() > 0)
+                .collect(Collectors.toMap(CartItem::getProductId, CartItem::getQuantity, Integer::sum));
     }
 
     private List<CartItemResponse> mapCartItemResponse(List<ProductResponse> products, Map<Long, Integer> qtyByProductId) {
-        return products.stream()
-                .map(p -> {
-                    CartItemResponse cartItemResponse = new CartItemResponse();
-                    cartItemResponse.setProduct(p);
-                    cartItemResponse.setQuantity(qtyByProductId.getOrDefault(p.getId(), 0));
-                    return cartItemResponse;
+        if (products == null || products.isEmpty() || qtyByProductId == null || qtyByProductId.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, ProductResponse> productMap = products.stream()
+                .filter(p -> p != null && p.getId() != null)
+                .collect(Collectors.toMap(ProductResponse::getId, p -> p));
+
+        return qtyByProductId.entrySet().stream()
+                .map(entry -> {
+                    Long productId = entry.getKey();
+                    Integer quantity = entry.getValue();
+                    ProductResponse product = productMap.get(productId);
+
+                    if (product != null && quantity != null && quantity > 0) {
+                        CartItemResponse cartItemResponse = new CartItemResponse();
+                        cartItemResponse.setProduct(product);
+                        cartItemResponse.setQuantity(quantity);
+                        return cartItemResponse;
+                    }
+                    return null;
                 })
+                .filter(Objects::nonNull)
                 .toList();
     }
 }
-
-

@@ -40,13 +40,11 @@ public class GatewaySecurityConfig {
 
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/products/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/users/details").permitAll()
-                        .pathMatchers(HttpMethod.GET, "/purchases/carts/session").permitAll()
-                        .pathMatchers(HttpMethod.POST, "/purchases/carts/session/items").permitAll()
-                        .pathMatchers(HttpMethod.GET, "/purchases/carts").authenticated()
-                        .pathMatchers(HttpMethod.PUT, "/purchases/carts").authenticated()
-                        .pathMatchers(HttpMethod.DELETE, "/purchases/carts").authenticated()
-                        .pathMatchers(HttpMethod.POST, "/purchases/carts/merge-session").authenticated()
+                        .pathMatchers(HttpMethod.GET, "/purchases/carts").permitAll()
+                        .pathMatchers(HttpMethod.PUT, "/purchases/carts/**").permitAll()
+                        .pathMatchers(HttpMethod.DELETE, "/purchases/carts/**").permitAll()
                         .anyExchange().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
